@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# The directory used to dump files
+dir1="/home/pi/scripts/email"
+# Create a directory to move around files if it doesn't exist,
+# then modify this directory's permissions
+sudo chmod 777 $dir1
+sudo chown 777 $dir1
+sudo mkdir -p $dir1/temp
+sudo chmod 777 $dir1/temp
+sudo chown pi:pi $dir1/temp
+# If the directory exists, delete its old contents
+sudo rm -f $dir1/temp/*
+# The to address
+to="dwassall@outlook.com"
+# The file to be used for the body of the e-mail
+body="${dir1}/temp/message.html"
+# Define a couple of dates
+today1=$(date +'%y%m%d') # YYMMDD | used for the danflixr file
+today2=$(date +'%A (%b %d %Y)') # Weekday (Month DD YYYY) | Used for the subj
+# Copy the DanFlixr file of the day to the email directory
+sudo cp /home/pi/scripts/danflixr/output/${today1} ${dir1}/temp/${today1}.txt
+# Copy the blank html file to to the temp dir to be manipulated
+sudo cp ${dir1}/message.html ${dir1}/temp/message1.html
+# Add table row and table cell headers in front of each line
+sudo awk '$0="<tr><td id=\"body\"><b>"$0'  ${dir1}/temp/${today1}.txt > ${dir1}/temp/${today1}_1.txt
+# Add table row and table cell closers at the end of each line
+sudo awk '$0=$0"</td></tr>"' ${dir1}/temp/${today1}_1.txt > ${dir1}/temp/${today1}_2.txt
+# Make the show name bold
+sudo sed -i "s/ Season/<\/b> Season/g" ${dir1}/temp/${today1}_2.txt
+# Replace the body content of the html file with the DanFlixr file
+file1=$(cat ${dir1}/temp/${today1}_2.txt)
+sudo awk -v file1="$file1" '{sub(/bodycontent/, file1);print;}' ${dir1}/temp/message1.html > ${dir1}/temp/message2.html
+#sudo sed -i "s/bodycontent/$(cat ${dir1}/temp/${today1}.txt)/" ${dir1}/temp/message1.html > ${dir1}/temp/message.html
+file2=$(base64 ${dir1}/image.jpg)
+sudo awk -v file2="$file2" '{sub(/imagereplace/, file2);print;}' ${dir1}/temp/message2.html > ${dir1}/temp/message.html
+#sudo sed -i "s/imagereplace/$(cat ${dir1}/image64)/g" ${dir1}/temp/message.html
+# Email the newly created html file to the designated email address
+cat ${body} | mail -s "$(echo -e "DanFlixr Report for ${today2}\nContent-Type: text/html")" ${to}
+sudo rm -r ${dir1}/temp

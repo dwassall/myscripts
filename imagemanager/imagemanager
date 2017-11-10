@@ -1,0 +1,76 @@
+#!/bin/bash
+
+#==VARIABLES TO CUSTOMIZE=====================================================
+# Directory to which the SD card will mount
+# Directory 1: SD card mount point
+dir1="/media/sd"
+# Directory 2: Location with original images
+#dir2="$dir1/DCIM/100D5200"
+dir2="/home/pi/scripts/imagemanager/dir1"
+# Directory 3: Destination for images
+#dir3="/var/www/html/data/data/dwassall/files/media/image/raw"
+dir3="/home/pi/scripts/imagemanager/dir2"
+#=============================================================================
+# The function help, displayed with the -h option
+function help {
+echo "ImageManager is a simply script that imports photos from an SD card,
+reformats the file names and uses these names to determine their destination."
+}
+# The getopts part to call the -h (help) option
+while getopts ":h" opt; do
+	case $opt in
+	h)	help ;;
+	\?)	echo "Invalid option."
+		exit 1 ;;
+	esac
+done
+# Let's find our SD card
+lsblk
+read -p "Type the drive number for the SD card (use sdb1 not sdb): " drive
+read -p "Is the drive already mounted somewhere? (Look at MOUNTPOINT) (y/n) " mountvar1
+# If the SD card is already mounted, unmount it and remount it to the
+# correct directory
+if [[ $mountvar1 = "y" ]] ; then
+	echo "Unmounting.."
+	sleep 1s
+	sudo umount /dev/$drive
+	echo "Remounting.."
+	sleep 1s
+	sudo mount /dev/$drive $dir1
+# If the SD card is not mounted, mount it
+else
+	echo "Mounting.."
+	sleep 1s
+	sudo mount /dev/$drive /$dir1
+fi
+# Let's check that it worked
+lsblk
+read -p "Do you see your drive mounted correctly? (y/n) " mountvar2
+# Quit if the drive is not mounted
+if [[ $mountvar2 = "n" ]] ; then
+	echo "Something screwy going on around here. Figure it out and rerun the program."
+	sleep 1s
+	exit 1
+fi
+# Verify there are images on the SD card
+imagecount=$(ls $dir2/*.NEF | wc -l)
+echo "Found $imagecount images."
+if [[ $imagecount = "0" ]] ; then
+	echo "No images found in directory."
+	sleep 1s
+	echo "Quitting.."
+	exit 1
+fi
+# ExifTool reformats all raw images (*.NEF) on the SD card ($dir2) by renaming
+# the file name (-filename) by the date (CreateDate) with the date (-d)
+# formatted as YYMMDD (%y%m%d) with sequential numbers following (01, 02)
+# (+.2nc) and the file type in lower case (.%%le)
+echo "Reformatting files.."
+sudo exiftool -d %y%m%d%%+.2nc.%%le "-filename<CreateDate" $dir2/*.NEF
+# ExifTool then moves the renamed files to the appropriate directory
+# (-directory). This is specificed by the file's created date (CreateDate),
+# formatted as YYYYMM (%Y%m)
+echo "Moving files.."
+sudo exiftool -d $dir3/%Y%m/ "-directory<CreateDate" $dir2/*.nef
+echo "ImageManager is done."
+sleep 1s
