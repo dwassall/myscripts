@@ -94,10 +94,8 @@ for i in $(seq 1 $rowcount); do # this will go through the file line by line
 				echo "$lastrow" >> $dir2/${show}_csv2
 			fi
 		done
-		reallastrow=$(cat $dir2/${show}_csv | awk 'END { print }')
-		echo "$reallastrow" >> $dir2/${show}_csv2
 		realepend=$(cat $dir2/${show}_csv2 | awk -F',' -v season=$season '$1==season{print $2}')
-		if [ "$epend" = "$realepend" ] && [ "$epstart" = "01" ] ; then
+		if [ "$epend" = "$realepend" ] ; then
 			echo "$row COMPLETE" >> $file3
 		else
 			echo "$row" >> $file3
@@ -106,141 +104,60 @@ for i in $(seq 1 $rowcount); do # this will go through the file line by line
 		echo "$row" >> $file3
 	fi
 done
-#=== LOOP 2b (group non-sequential episodes to same season line) =================================
-loop2multi="n"
-rowcount=$(cat $file3 | wc -l)
-for i in $(seq 1 $rowcount); do
-	lasti=$(($i - 1))
-	completecheck=$(cat $file3 | awk -v i=$i 'FNR == i {print $(NF-0)}') # set last word of line to a variable
-	lastcompletecheck=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {print $(NF-0)}')
-	row=$(cat $file3 | awk -v i=$i 'NR == i') # set the row as a string
-	lastrow=$(cat $file3 | awk -v lasti=$lasti 'NR == lasti') # set the previous row as a string
-	if [ "$completecheck" = "COMPLETE" ] ; then # check if this row contains a complete season
-		if [ "$loop2multi" = "y" ] ; then # if this is y, this is the end of a run
-			echo "$newrow" >> $file4 # so print the line generated
-			echo "$row" >> $file4 # print the current line
-			loop2multi="n"
-			continue # and move on to the next row
-		else # if this is n, then this row stands alone
-			if [ "$lastcompletecheck" = "COMPLETE" ] ; then # if the last line was complete, we just need to print the current row
-				echo "$row" >> $file4
-			else # if it wasn't, the previous row and the current row need to be both be printed
-				echo "$lastrow" >> $file4 # print the previous row
-				echo "$row" >> $file4 # print the row as is to a new file
-			fi
-			loop2multi="n"
-			continue # and move onto the next row
-		fi
-	else # if its not check we need to see if this is part of a sequence
-		if [ "$lastcompletecheck" = "COMPLETE" ] ; then # if the previous line was COMPLETE, then this is not part of a sequence
-			if [ "$i" = "$rowcount" ] ; then
-				echo "$row" >> $file4
-			else
-				continue # so move on to the next row
-			fi
-		else # if it wasnt then this may be in the middle of a sequence, so let's define variables
-			if [[ $lastrow == *"-"* ]] ; then # detect if there is an episode span in the previous row
-				loop2show1=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {NF-=6; print}') # define previous row variables
-				loop2season1=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {print $(NF-4)}')
-			else # if there wasnt variables will be defined differently
-				loop2show1=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {NF-=4; print}') # define previous row variables
-				loop2season1=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {print $(NF-2)}')
-			fi
-			if [[ $row == *"-"* ]] ; then # detect if there is an episode span in the current row
-				loop2show2=$(cat $file3 | awk -v i=$i 'FNR == i {NF-=6; print}') # define current row variables
-				loop2season2=$(cat $file3 | awk -v i=$i 'FNR == i {print $(NF-4)}')
-				loop2epstart2=$(cat $file3 | awk -v i=$i 'FNR == i {print $(NF-2)}')
-				loop2epend2=$(cat $file3 | awk -v i=$i 'FNR == i {print $(NF-0)}')
-			else # if there wasnt variables will be defined differently
-				loop2show2=$(cat $file3 | awk -v i=$i 'FNR == i {NF-=4; print}') # row variables
-				loop2season2=$(cat $file3 | awk -v i=$i 'FNR == i {print $(NF-2)}')
-				loop2episode2=$(cat $file3 | awk -v i=$i 'FNR == i {print $(NF-0)}')
-			fi
-			if [ "$loop2show1" = "$loop2show2" ] && [ "$loop2season2" = "$loop2season1" ] ; then # is this row part of a run of same-season/same-show?
-				if [ "$loop2multi" = "y" ] ; then # if its a sequence, were we in the middle of a run? if we were..
-					if [[ $row == *"-"* ]] ; then #figure out if the current row is an episode span..
-						newrow="$newrow, ${loop2epstart2}-$loop2epend2" # if it is print this
-						loop2multi="y" # tell it we're in the middle of a run
-						continue # and move to the next row
-					else # if its not an episode span..
-						newrow="$newrow, $loop2episode2" # print this
-						loop2multi="y" # remind it were in the middle of a run
-						continue # and move on to the next row
-					fi
-				else # if we were not in the middle of a run, then we've discovered the start of a run (on the previous row)
-					lastrow=$(echo "$lastrow" | sed 's/Episode /Episodes /g')
-					if [[ $row == *"-"* ]] ; then # so figure out if this row is an episode span
-						newrow="$lastrow, ${loop2epstart2}-$loop2epend2" # if it is print this
-						loop2multi="y" # change this to tell it this is the start of a run
-						continue # and move to the next row
-					else # if its not an episode span
-						newrow="$lastrow, $loop2episode2" # print this
-						loop2multi="y" # define the run variable
-						continue # and move on
-					fi
-				fi
-			else # if this is row is not a run (not the same-show/same-season)
-				if [ "$loop2multi" = "y" ] ; then # figure out if this was the middle of a run, if it was, then the previous row is the end
-					echo "$newrow" >> $file4 # so export the run to the file
-					loop2multi="n" # tell it this is no longer a run
-					continue # and move on
-				else # if this was not part of a run, then the previous row stands alone
-					echo "$lastrow" >> $file4 # so print the previous row to the file
-					loop2multi="n" # remind it that we're not in a run
-					continue # and move on
-				fi
-			fi
-		fi
-	fi
-done
-cp $file4 ${file3}b
-mv $file3 ${file3}a
-mv $file4 $file3
-#=== LOOP 3 (group complete seasons) =========================================================
 loop3multi="n"
 rowcount=$(cat $file3 | wc -l)
 for i in $(seq 1 $rowcount); do # this will go through the file line by line
+	echo "POINT 1"
 	fullrow=$(cat $file3 | awk -v i=$i 'NR == i')
 	completecheck=$(cat $file3 | awk -v i=$i 'FNR == i {print $(NF-0)}')
-	lasti=$(($i - 1))
+	lasti=$((i - 1))
 	lastcompletecheck=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {print $(NF-0)}')
 	if [ "$completecheck" = "COMPLETE" ] ; then # check if this row contains a complete season
+		echo "POINT 2"
 		if [ "$lastcompletecheck" = "COMPLETE" ] ; then # check if the last row was a complete row
+			echo "POINT 3"
 			loop3show1=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {NF-=7; print}') # define previous row variables
 			loop3season1=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {print $(NF-5)}')
 		else
-			continue
+			echo "POINT 4"
+			if [ "$printalready" = "y" ] ; then
+				echo "POINT 4a"
+				continue
+			else
+				echo "POINT 4b"
+				continue
+			fi
 		fi
 		loop3show2=$(cat $file3 | awk -v i=$i 'FNR == i {NF-=7; print}') # define current row variables
 		loop3season2=$(cat $file3 | awk -v i=$i 'FNR == i {print $(NF-5)}')
 		loop3season1plus1=$((${loop3season1#0} + 1))
 		loop3season1plus1=$(printf %02d $loop3season1plus1)
 		if [ "$loop3show1" = "$loop3show2" ] && [ "$loop3season2" = "$loop3season1plus1" ] ; then # is this row sequential?
+			echo "POINT 5"
 			if [ "$loop3multi" = "y" ] ; then # ... and were we in the middle of a sequence? if we were...
-				if [ $i = $rowcount ] ; then # if were on the last row
-					echo "$loop3show1 Seasons $loop3seasonstart - $loop3season2" >> $file4 # print the sequence
-				else # if were not on the last row
-					loop3multi="y" # continue the sequence to the next line
-				fi
+				echo "POINT 6"
+				loop3multi="y" # continue the sequence to the next line
 			else # if we weren't in the middle of a sequence then this is the beginning of a sequence
-				if [ $i = $rowcount ] ; then # if were on the last row
-					echo "$loop3show1 Seasons $loop3season1 - $loop3season2" >> $file4 # print the last row and this row
-				else # if were not on the last row
-					loop3seasonstart=$loop3season1 # so the first season of this sequence is the one from the previous row
-					loop3multi="y" # continue the sequence to the next line
-				fi
+				echo "POINT 7"
+				loop3seasonstart=$loop3season1 # so the first season of this sequence is the one from the previous row
+				loop3multi="y" #continue the sequence to the next line
 			fi
 		else # if this row is not sequential..
+			echo "POINT 8"
 			if [ "$loop3multi" = "y" ] ; then # were we in the middle of a sequence? if we were, we've now found the end
+				echo "POINT 9"
 #				so the season in the last row is the ending season of the sequence
 				echo "$loop3show1 Seasons $loop3seasonstart - $loop3season1" >> $file4 # so print the following
 			else # if we weren't in a sequence, then the last row stands alone
+				echo "POINT 10"
 				echo "$loop3show1 Season $loop3season1" >> $file4 # so print the previous line, condensing it
 			fi
 			loop3multi="n"
 		fi
 	else # if the current row does not contain complete
+		echo "POINT 11"
 		if [ "$loop3multi" = "y" ] ; then # check if this is the end of a run
+			echo "POINT 12"
 			lasti=$(($i - 1))
 			loop3show1=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {NF-=7; print}') # define previous row variables
 			loop3season1=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {print $(NF-5)}')
@@ -249,26 +166,26 @@ for i in $(seq 1 $rowcount); do # this will go through the file line by line
 			loop3multi="n" # tell it that this is the end of a sequence
 			printalready="n"
 		elif [ "$loop3multi" = "n" ] && [ "$lastcompletecheck" = "COMPLETE" ] ; then
+			echo "POINT 14"
 			lasti=$(($i - 1))
 			lastfullrowseasononly=$(cat $file3 | awk -v lasti=$lasti 'FNR == lasti {NF-=5; print}') # last full row season only
 			echo "$lastfullrowseasononly" >> $file4
 			echo "$fullrow" >> $file4
 		else # if this is not the middle of a sequence, just print the line as is
+			echo "POINT 13"
 			echo "$fullrow" >> $file4 # if it doesn't, print the line as is
 			printalready="y"
 		fi
 	fi
 done
-sed -i '/^\s*$/d' $file4
-sed -i 's/ 0*/ /g' $file4
-sed -i 's/-0*/-/g' $file4
-sed -i 's/ - /-/g' $file4
+cat $file4
+#sudo rm $file2 $file3 $file4
 #=== CLEAN UP =========================================================================
-if [ -f $file4 ] ; then
-	sudo rm $file1 $file2 $file3
-	sudo mv $file4 $file1
-else
-	echo "FileFix error: File wasn't created" >> $file2
-	sudo mv $file1 ${file1}_copy
-	sudo mv $file2 $file1
-fi
+#if [ -f $file2 ] ; then
+#	sudo rm $file1
+#	sudo mv $file2 $file1
+#else
+#	echo "FileFix error: File wasn't created" >> $file2
+#	sudo mv $file1 ${file1}_copy
+#	sudo mv $file2 $file1
+#fi

@@ -5,24 +5,28 @@ printf "DanFMr (v2) is the updated version of DanFMr.
 Its function is to download the audio from YouTube videos and sort it accordingly.
 -SYNTAX---- $: danfmr2 [-options]
 	--OPTIONS--------------------------------
-	-f (--file)	Open the file of URLs to download
-	-h (--help)	Display this help
-	-m (--manual)	MANUAL option
-			Manually edit metadata info for tracks in designated directory
-			Usage: danfmr -m [directory]
-		               danfmr -m (this would just default to current directory)
-	-t (--topic)	TOPIC option
-			Can be used for albums playlists from 'ARTIST - TOPIC' channels
-			Do not use if the list of playlists to download is mixed.
-	--misc		Go to the misc music folder
+	-f	Open the file of URLs to download
+	-h	Display this help
+	-m	MANUAL option
+		Manually edit metadata info for tracks in designated directory
+		Usage: danfmr -m [directory]
+	-t	TOPIC option
+		Can be used for albums playlists from 'ARTIST - TOPIC' channels
+		Do not use if the list of playlists to download is mixed.
 "
 }
 function setvariables { # set default variables and file locations
-	. loadcolors
+	RED='\033[0;31m'
+	LIGHTGREY='\033[0;37m'
+	DARKGREY='\033[0;30m'
+	BLUE='\033[0;94m' # actually light cyan, but oh well
+	YELLOW='\033[0;33m'
+	NOCOLOR='\033[0m'
+	UNDERLINE='\033[4m'
+	NOSTYLE='\033[0m'
 	dir1="/home/pi/scripts/danfmr2" # script directory
 	dir2="/home/pi/scripts/danfmr2/temp" # where files will be downloaded
 	file="/home/pi/scripts/danfmr2/file" # the file to edit with URLs
-	logfile="/home/pi/scripts/danfmr2/log.file" # file to output log
 	userid=$(whoami) # user id
 	sudo mkdir -p $dir2 # create the temp directory if it doesnt exist
 	if [ ! -f $file ] ; then # if the file doesnt exist
@@ -30,53 +34,46 @@ function setvariables { # set default variables and file locations
 	else # if the file does exist
 		sudo cp $file ${file}.backup # create a back up copy of it
 	fi
-	if [ ! -f $logfile ] ; then
-		touch $logfile
-	else
-		sudo rm $logfile && touch $logfile
-	fi
-	sudo chmod 777 $dir1 $dir2 $file $logfile && sudo chown ${userid}:${userid} $dir1 $dir2 $file $logfile # set permissions
-	echo "SETVARIABLES function ::::::::::::" >> $logfile
+	sudo chmod 777 $dir1 $dir2 $file && sudo chown ${userid}:${userid} $dir1 $dir2 $file # set permissions
 }
 function setips {
-	ipsource=$(ifconfig | grep inet | sed -n 1p | awk -F: '{print $2}' | sed 's/  Bcast//g') # figure out the IP address
-	ipid=$(whereami)
-	if [ "$ipid" = "raspi1" ] ; then
+	myip=$(ifconfig | grep inet | sed -n 1p | awk -F: '{print $2}' | sed 's/  Bcast//g') # figure out the IP address
+	if [ "$myip" = "192.168.1.3" ] ; then # if it is this IP address, set these parameters
+		ipsource="192.168.1.3"
 		ipdest="192.168.1.9"
-	elif [ "$ipid" = "raspi2" ] ; then
-#		echo -n "Input destination IP: "
-#		read ipdest
-		ipdest="192.168.1.4"
-	else
-		echo -n "IP name not found. Please input your current IP address: "
+		ipid="raspi1"
+	elif [ "$myip" = "192.168.1.9" ] ; then # if it is this, set these
+		ipsource="192.168.1.9"
+		echo -n -e "Current IP address: ${BLUE}${ipsource}${NOCOLOR} | Destination IP address: ${BLUE}192.168.1.3${NOCOLOR} | Correct? (y/n) "
+		read ipopt
+		if [ "$ipopt" = "y" ] ; then
+			ipdest="192.168.1.3"
+		else
+			echo -n "Input destination IP: "
+			read ipdest
+		fi
+		ipid="raspi2"
+	else # if the ip address is not one of these two, set the parameters manually
+		echo -n "IP address not recognized. Please input your current IP address: "
 		read ipsource
 		echo -n "Input destination IP address: "
 		read ipdest
 		echo -n "Input computer name: (raspi1/raspi2) "
 		read ipid
 	fi
-	echo "SETIPS function ::::::::::::" >> $logfile
-	echo "IP ID (ipid): $ipid" >> $logfile
-	echo "IP address destination (ipdest): $ipdest" >> $logfile
 }
 function mainscript {
 	rowcount=$(wc -l < $file) # count rows in file
-	echo "Row count in file (rowcount): $rowcount" >> $logfile
 	sudo rm -r -f $dir2/*
 	if [ "$rowcount" -lt 4 ] ; then # if its less than 4
 		echo "No URLs detected. Quitting..." # then the file has not been modified
 		exit 1 # so the script will quit
 	fi
 	for i in $(seq 4 $rowcount) ; do # so now this loops through row by row
-		echo "Running loop for row (i): $i" >> $logfile
 		id=$(cat $file | awk -v i=$i 'FNR == i {print $1}') # assign variables
-		echo "Download ID (id): $id" >> $logfile
 		url=$(cat $file | awk -v i=$i 'FNR == i {print $2}')
-		echo "Download url (url): $url" >> $logfile
 		idshow=$(sed 's/_/ /g' <<< $id) # remove underscores to make it pretty
-		echo "Download ID (with underscores removed) (idshow): $idshow" >> $logfile
 		dir3="${dir2}/${id}"
-		echo "Download directory (dir3): $dir3" >> $logfile
 		sudo mkdir -p "$dir3" # make a directory for the downloads
 		sudo chmod 777 "$dir3" && sudo chown ${userid}:${userid} "$dir3" # change permissions
 		wget -q -O "${dir3}/${id}_url" "$url" # download the youtube url
@@ -86,19 +83,15 @@ function mainscript {
 			# isolate the lines with artist (grep) then isolate the first line (sed)
 			if [[ $idartist == *"VEVO"* ]] ; then # if the artist is a VEVO artist
 				idartist=$(echo "${idartist#*>}" | sed 's/.\{8\}$//' | sed 's/\([^[:blank:]]\)\([[:upper:]]\)/\1 \2/g')
-				idartist=$(echo "$idartist" | recode html..ascii)
 				# remove the last 8 characters then add a space between words
 			else # if the artist is not a VEVO artist, then it is a Topic artist
 				idartist=$(echo "${idartist#*>}" | sed 's/.\{12\}$//')
-				idartist=$(echo "$idartist" | recode html..ascii)
 				# so remove the last 12 characters (and the space is already there)
 			fi
-			echo "Artist from the url (idartist): $idartist" >> $logfile
 			idalbum=$(cat "${dir3}/${id}_url" | grep '</title>' | sed -n '1p')
 			# isolate the lines with the album (grep) then isolate the first line (sed)
 			idalbum=$(echo "${idalbum#*>}" | sed 's/.\{18\}$//') # remove the last 18 characters
 			idalbum=$(echo "$idalbum" | recode html..ascii)
-			echo "Album from the url (idalbum): $idalbum" >> $logfile
 			echo -e "${BLUE}done${NOCOLOR} | Found: ${RED}$idalbum${NOCOLOR} (album) | ${RED}$idartist${NOCOLOR} (artist)" && sleep 1s # display the info found
 		else # if the topic option is off
 			echo -e "[TOPIC option disabled] Album/Artist info must be entered manually for ${RED}$idshow${NOCOLOR}"
@@ -109,7 +102,6 @@ function mainscript {
 		videocount=$(echo "${videocount#*</li>}") # refine it
 		videocount=$(echo "${videocount%%</li>*}") # refine it
 		videocount=$(echo "${videocount:4:${#videocount}-11}") # this will leave just the number
-		echo "Video count from the url (videcount): $videocount" >> $logfile
 		echo -n -e "Downloading album [${LIGHTGREY}$idshow${NOCOLOR}]..."
 		youtube-dl -q --no-warnings --extract-audio --audio-quality 0 --audio-format mp3 -o "${dir3}/%(title)s.%(ext)s" "$url" &
 		# Download the youtube videos from the playlist url and extract the audio to mp3
@@ -136,18 +128,12 @@ function mainscript {
 		metaalbum=$(exiftool "${dir3}/${item}" | sed 's/: /:/g' | awk -F: '$1 ~ "Album" {print $2}') # find the album info for the file
 		metaartist=$(exiftool "${dir3}/${item}" | sed 's/: /:/g' | awk -F: '$1 ~ "Band" {print $2}') # find the album artist
 		metayear=$(exiftool "${dir3}/${item}" | sed 's/: /:/g' | awk -F: '$1 ~ "Year" {print $2}') # find the year
-		if [ $(echo -e "$metaalbum" | wc -l) -gt 1 ] ; then # sometimes beets accidentally puts repeated info over and over in the metadata
-		# so this checks to see if the album string contains multiple lines, if it does...
-			echo -e "${RED}error${NOCOLOR} | Restarting download..."
-			i=$((i-1)) # set line to previous
-			continue # and break this run of the loop ; in other words, re try the download
-		fi
 		if [ "$metayear" = "" ] ; then
-			echo -e "${RED}failed${NOCOLOR}" && sleep 1s
+			echo -n -e "\033[2K\r" && echo -e "Analyzing metadata with ${YELLOW}Beets${NOCOLOR}...${RED}failed${NOCOLOR}" && sleep 1s
 			echo -e "${YELLOW}Beets${NOCOLOR} could not find a match for the album. The files will be renamed and transferred to the miscellaneous directory."
 		else
 			metagenre=$(exiftool "${dir3}/${item}" | sed 's/: /:/g' | awk -F: '$1 ~ "Genre" {print $2}') # find the genre
-			echo -e "${BLUE}done${NOCOLOR} | Tags imported for ${RED}${metaalbum} (${metayear}) - ${metaartist}${NOCOLOR}" && sleep 1s
+			echo -n -e "\033[2K\r" && echo -e "Analyzing metadata with ${YELLOW}Beets${NOCOLOR}...${BLUE}done${NOCOLOR} | Tags imported for ${RED}${metaalbum} (${metayear}) - ${metaartist}${NOCOLOR}" && sleep 1s
 		fi
 		echo -n -e "Renaming files..."
 		beet move -d "${dir3}/" >/dev/null 2>&1
@@ -170,25 +156,18 @@ function mainscript {
 			metaartist="$idartist" # set the artist listed on the metadata obtained from the Youtube page
 		fi
 		genredir=$(cat ${dir1}/genres | awk '{if ($1 == "'$itemgenre'") {print $3}}') # set the directory to send the files to
-		artistdir=$(echo "${metaartist,,}" | sed 's/ /_/g' | sed '/\&/and/g') # sets the artist directory, removing spaces
-		albumdir=$(echo "${metaalbum,,}" | sed 's/ /_/g' | sed 's|["'\'']||g' | sed 's/ //g' | sed '/\&/and/g') # sets the album directory, removing spaces and quotes
+		artistdir=$(echo "${metaartist,,}" | sed 's/ /_/g') # sets the artist directory, removing spaces
+		albumdir=$(echo "${metaalbum,,}" | sed 's/ /_/g' | sed 's|["'\'']||g' | sed 's/ //g') # sets the album directory, removing spaces and quotes
 		echo -n "Transferring album to music server..."
 		if [ "$metayear" != "" ] ; then # if year is not blank, that means Beets succeeded in matching the album
-			sudo mkdir -p "/media/server/music/${genredir}/${artistdir}/${albumdir}_${metayear}"
-			sudo mv ${dir3}/*.mp3 /media/server/music/${genredir}/${artistdir}/${albumdir}_${metayear}/
-#			dir4="${dir3}/${albumdir}_${metayear}"
-#			sudo mkdir -p ${dir4}
-#			sudo mv ${dir3}/*.mp3 ${dir4}/
-#			sshpass -p 'Mostmasok1stic' rsync -e 'ssh -o StrictHostKeyChecking=no -l pi' -ar --rsync-path='mkdir -p /media/server/music/${genredir}/“${artistdir}”/ && rsync' ${dir4} pi@${ipdest}:/media/server/music/${genredir}/"${artistdir}"/
+			sshpass -p 'Mostmasok1stic' rsync -e 'ssh -o StrictHostKeyChecking=no -l pi' -aR --rsync-path='mkdir -p /media/server/music/${genredir}/${artistdir}/${albumdir}_${metayear} && rsync' ${dir3}/*.mp3 pi@${ipdest}:/media/server/music/${genredir}/"${artistdir}"/"${albumdir}"_${metayear}/
 			# so the files can be transferred, sshpass passes the password to rsync so that it doesnt stall, -e adds a check option so that
 			# it doesnt make you verify the receiving servers identitiy, -rsync-path creates the artist directory if its missing
 		else # if the year is blank, then Beets did not match the album, so we dont have all the metadata, only the artist and album
-			sudo mkdir -p "/media/server/music/${genredir}/${artistdir}/${albumdir}"
-			sudo mv ${dir3}/*.mp3 /media/server/music/${genredir}/${artistdir}/${albumdir}/
-#			dir4="${dir3}/${albumdir}_album" # make a directory within the download directory
-#			sudo mkdir -p ${dir4}
-#			sudo mv ${dir3}/*.mp3 ${dir4}/ # move the mp3 files into this new directory
-#			sshpass -p 'Mostmasok1stic' rsync -e 'ssh -o StrictHostKeyChecking=no -l pi' -ar --rsync-path='mkdir -p /media/server/music/${genredir}/”${artistdir}” && rsync' ${dir4} pi@${ipdest}:/media/server/music/${genredir}/”${artistdir}”/
+			dir4="${dir3}/${albumdir}" # make a directory within the download directory
+			sudo mkdir -p ${dir4}
+			sudo mv ${dir3}/*.mp3 ${dir4}/ # move the mp3 files into this new directory
+			sshpass -p 'Mostmasok1stic' rsync -e 'ssh -o StrictHostKeyChecking=no -l pi' -ar --rsync-path='mkdir -p /media/server/music/${genredir}/${artistdir} && rsync' ${dir4} pi@${ipdest}:/media/server/music/${genredir}/${artistdir}/
 			# do the same sshpass/rsync command as before but transfer files to an artist directory within the misc directory
 		fi
 		echo -n -e "\033[2K\r" && echo -e "Transferring album to music server...${BLUE}done${NOCOLOR}" && sleep 1s
@@ -250,16 +229,6 @@ function manualscript { # manually edit metadata
 		fi
 	else # if the genre is not blank, then the last.fm bit worked
 		echo -e "${BLUE}done${NOCOLOR} | Genre: ${RED}${genre}${NOCOLOR}"
-		echo -n -e "Set genre as ${RED}${genre}${NOCOLOR}? (y/n) "
-		read genreapprove
-		if [ "$genreapprove" = "n" ] ; then
-			read -p "Enter Genre (-l to list): " genre # so a genre must be entered manually
-			if [ "$genre" = "-l" ] ; then # this option lists the genres
-				printf "%-22s  %-22s  %-22s  %-22s\n" $(cat ${dir1}/genres | awk '{print $2}') | sed 's/_/ /g' | sed -e "s/\b\(.\)/\u\1/g"
-				# the printf bit lists them in 4 colums
-				read -p "Enter Genre: " genre # so enter the genre based on the list
-			fi
-		fi
 	fi
 	genrefind=$(echo ${genre,,} | sed 's/ /_/g') # reformat the genre to the format used in the genres list
 	genredir=$(cat ${dir1}/genres | grep -e " $genrefind " -e "$genrefind," | awk '{print $3}') # find the directory listed with the genre
@@ -350,8 +319,8 @@ function manualscript { # manually edit metadata
 	echo -n "Moving files..."
 	albumartistdir=$(echo ${albumartist,,} | sed 's/ /_/g')
 	albumdir=$(echo ${album,,} | sed 's/ /_/g')
-	if [ "$ipid" = "raspi2" ] ; then
-		sudo mkdir -p /media/server/music/${genredir}/"${albumartistdir}"/"${albumdir}"_${year}
+	if [ "$ipid" = "raspi1" ] ; then
+		sudo mkdir -p /media/server/music/music/${genredir}/"${albumartistdir}"/"${albumdir}"_${year}
 		sudo mv "$targetdir"/*.mp3 /media/server/music/${genredir}/"${albumartistdir}"/"${albumdir}"_${year}/
 	fi
 #		sshpass -p 'Mostmasok1stic' rsync -e 'ssh -o StrictHostKeyChecking=no -l pi' -rR ${dir4} pi@192.168.1.3:/media/server/music/${genredir}/${artistdir}/
@@ -359,44 +328,24 @@ function manualscript { # manually edit metadata
 }
 # ============== SCRIPT OPTIONS ================================================================
 setvariables # function that sets default variables
-while [ "$1" != "" ] ;
-do
-	case $1 in
-		-f|--file)
-			sudo nano +100 $file
-			exit ;;
-		-h|--help)
-			help
-			exit ;;
-		-m|--manual)
-			shift
-			if [[ "$1" == "" ]] ; then
-				targetdir=$(pwd)
-				setips
-				manualscript
-				exit
-			elif [[ "$1" == "-"* ]] ; then
-				targetdir=$(pwd)
-				setips
-				manualscript
-				continue
-			else
-				targetdir="$1"
-				setips
-				manualscript
-				exit
-			fi
-			;;
-		-t|--topic)
-			topic="y" ;;
-		--misc)
-			cd /media/server/music/misc
-			exit ;;
-		*)
-			echo "Invalid option. See help (-h)."
-			exit ;;
+while getopts ":fhtm:" opt; do
+	case $opt in
+	f)	sudo nano +100 $file # Open file with URLs beginning on blank line
+		exit
+		;;
+	h)	help # display help dialogue
+		exit 1 ;;
+	m)	targetdir=$OPTARG
+		setips
+		manualscript # run script to manually edit metadata
+		exit 1 ;;
+	t)	topic="y" ;; # sets topic-option to on
+	\?)	echo "Invalid option." # if a letter other than those designated
+		exit 1 ;;
+	: )	targetdir=$(pwd)
+		manualscript
+		exit  ;;
 	esac
-	shift
 done
 # ============== ACTUAL SCRIPT ================================================================
 setips # set IP addresses

@@ -1,0 +1,39 @@
+#!/bin/bash
+
+file=$1
+
+echo "Analyzing $file.."
+sleep 1s
+
+lastseason=$(cat $file.txt | sed '$!d' | awk '{print $1}')
+echo "Highest season number found is $lastseason."
+
+lastseasonepisodecount=$(awk -v var=$lastseason '($1 == var)' $file.txt | sed '$!d' | awk '{print $2}')
+echo "The last season has $lastseasonepisodecount episodes."
+
+sudo cp $file.txt $file\_1.txt
+sudo chmod 777 $file\_1.txt
+sudo chown pi:pi $file\_1.txt
+for i in $(seq 1 $lastseasonepisodecount) ; do
+file2=$file\_$i.txt
+lastepisodeairdate=$(awk -v var=$lastseason '($1 == var)' $file2 | sed '$!d'| awk '{print $3$4$5}')
+lastepisodeairdate2=$(date -d"$lastepisodeairdate" +%Y%m%d)
+lastepisodeairdate3=$((lastepisodeairdate2 +1))
+#echo "The last episode aired on $lastepisodeairdate."
+#echo "The last episode (reformatted) aired on $lastepisodeairdate2."
+#echo "The date I could download the last episode is $lastepisodeairdate3."
+
+today=$(date +'%Y%m%d')
+#  echo "Today's date is $today."
+
+iplusone=$((i+1))
+
+if [ "$today" -lt "$lastepisodeairdate3" ] ; then
+	sudo sed '$ d' $file2 > $file\_$iplusone.txt
+else
+	break
+fi
+done
+inew=$(($iplusone - 1))
+filenew=$file\_$inew.txt
+echo "Highest file created is $filenew."

@@ -98,10 +98,10 @@ function step1 { # Main loop
 #=== OPTIONS ========================================================================
 while getopts ":o:s:h" opt; do
 	case $opt in
-	o)	sudo rm -f $dir3/$OPTARG
+	o)	sudo rm -f $dir2/$OPTARG
 		exec 1<&-
 		exec 2<&-
-		exec 1<>$dir3/$OPTARG
+		exec 1<>$dir2/$OPTARG
 		exec 2>&1 ;;
 	s)	oneshow=$OPTARG
 		oneshowvar="1" ;;
