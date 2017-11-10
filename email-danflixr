@@ -19,7 +19,7 @@ body="${dir1}/temp/message.html"
 today1=$(date +'%y%m%d') # YYMMDD | used for the danflixr file
 today2=$(date +'%A (%b %d %Y)') # Weekday (Month DD YYYY) | Used for the subj
 # Copy the DanFlixr file of the day to the email directory
-sudo cp /home/pi/scripts/danflixr/output/${today1} ${dir1}/temp/${today1}.txt
+sudo cp /home/pi/scripts/danflixr2/output/${today1} ${dir1}/temp/${today1}.txt
 # Copy the blank html file to to the temp dir to be manipulated
 sudo cp ${dir1}/message.html ${dir1}/temp/message1.html
 # Add table row and table cell headers in front of each line
@@ -36,5 +36,6 @@ file2=$(base64 ${dir1}/image.jpg)
 sudo awk -v file2="$file2" '{sub(/imagereplace/, file2);print;}' ${dir1}/temp/message2.html > ${dir1}/temp/message.html
 #sudo sed -i "s/imagereplace/$(cat ${dir1}/image64)/g" ${dir1}/temp/message.html
 # Email the newly created html file to the designated email address
-cat ${body} | mail -s "$(echo -e "DanFlixr Report for ${today2}\nContent-Type: text/html")" ${to}
-sudo rm -r ${dir1}/temp
+#cat ${body} | mail -s "DanFlixr Report for ${today2}" ${to}
+(echo "Subject: DanFlixr Report for ${today2}"; echo "To: ${to}"; cat ${body}) | sendmail ${to}
+#sudo rm -r ${dir1}/temp

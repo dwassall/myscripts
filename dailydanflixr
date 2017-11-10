@@ -1,0 +1,11 @@
+#!/bin/bash
+
+dir1="/home/pi/scripts/danflixr2/output"
+today=$(date +'%y%m%d')
+today2=$(date +'%A (%b %d %Y)')
+
+sudo rm -r -f ${dir1}/*
+
+danflixr2 -o ${today}
+filefix2 ${today}
+email-danflixr

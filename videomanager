@@ -1,0 +1,174 @@
+#!/bin/bash
+# ============= FUNCTIONS =====================================================================
+function help { # script information and help dialogue
+printf "VideoManager is a multi-purpose app for managing video files on this Raspberry Pi.
+-SYNTAX---- $: videomanager [-options]
+	--OPTIONS--------------------------------
+	--import	Import video files from memory card
+	--rename	Go through files in current directory one by one and rename
+	-h (--help)	Display this help
+"
+}
+function setvariables { # set default variables and file locations
+	. loadcolors # load color variables from other script
+	dir1="/home/pi/scripts/videomanager" # script directory
+	logfile="/home/pi/scripts/videomanager/log.file" # file to output log
+	userid=$(whoami) # user id
+	sudo mkdir -p $dir1 # create the directory if it doesnt exist
+	sudo chmod 750 $dir1 && sudo chown ${userid}:${userid} $dir1 # set permissions
+	if [ ! -f $logfile ] ; then
+		touch $logfile
+	else
+		sudo rm $logfile && touch $logfile
+	fi
+}
+function mountdrive { # mount the sd drive
+	lsblk # list the drives
+	echo -n "Enter the SD card location: (use sda1 not sda) "
+	read sdlocation
+	sudo umount /dev/${sdlocation} # unmount the sd card
+	echo -n "Mounting..."
+	sudo mount -o nonempty /dev/${sdlocation} /media/sd # mount the sd card
+	echo -e "${LIGHTCYAN}done${NOCOLOR}"
+}
+function importvideos { # function to transfer videos from sd card to storage drive
+	echo -n "Scanning SD card..."
+	totalvideos=$(ls /media/sd/DCIM/100D5200/*.MOV | wc -l) # count the number of video files
+	echo -e "${LIGHTCYAN}done${NOCOLOR} | Found ${YELLOW}${totalvideos}${NOCOLOR} video files"
+	echo -n "Renaming files..."
+	sudo exiftool -d %y%m%d%%+.2nc.%%le "-filename<CreateDate" /media/sd/DCIM/100D5200/*.MOV > /dev/null 2>&1
+	# rename the files in yymmdd_##.mov format
+	echo -e "${LIGHTCYAN}done${NOCOLOR} | File names updated"
+	echo -e -n "Default destination is set to ${LIGHTGREY}WIFE > MISC > [YEAR]${NOCOLOR} | Is this okay? (y/n) "
+	read changedestopt
+	if [ "$changedestopt" = "y" ] ; then # if this is okay to be the destination directory
+		destdir="/var/www/html/data/data/dwassall/files/media/video/wife/misc/" # then set this variable
+	else # if not...
+		echo "Okay so select a new directory..."
+		destdir="/var/www/html/data/data/dwassall/files/media/video"
+		while : # run an infinite loop
+		do
+			echo "Directory ${destdir}:" # every time the loop runs, it will list the directory that is currently being viewed
+			ls ${destidir} # then will list the contents
+			echo -n "Enter desired directory ( use . to select current directory | use n to create new directory ) : "
+			read diropt
+			if [ "$diropt" = "." ] ; then # if the option is to select the current directory
+				break # then the loop will end
+			elif [ "$diropt" = "n" ] ; then # if the option is to make a new directory
+				echo -n "Enter new directory name (lower-case preferred): "
+				read newdir # enter new directory name
+				sudo mkdir -p "${destdir}/${newdir}" # create new directory
+				sudo chmod 750 ${destdir}/${newdir} && sudo chown www-data:www-data ${destdir}/${newdir} # change permissions
+				destdir+="/${newdir}" # add this new directory to the directory variable
+				continue # and run the loop again
+			else # if the option is to select one of the subdirectories
+				destdir+="/${diropt}" # add the subdirectory to the directory variable
+				continue # and run the loop again
+			fi
+		done
+	fi
+	echo -n "Moving files..."
+	sudo exiftool -d ${destdir}/%Y "-directory<CreateDate" /media/sd/DCIM/100D5200/*.mov > /dev/null 2>&1
+	# move the files to the selected directory and a subdirectory with the year (YYYY)
+	echo -e "${LIGHTCYAN}done${NOCOLOR} | Files moved to selected destination"
+}
+function renamefiles {
+	echo -n "Scanning directory..."
+	currentdir=$(pwd)
+	totalfiles=$(ls ${currentdir}/*.{mov,MOV,mp4,MP4} 2>/dev/null | wc -l)
+	echo -e "${LIGHTCYAN}done${NOCOLOR} | Found ${YELLOW}${totalfiles}${NOCOLOR} files"
+	echo -n "Use smart option? (y/n) "
+	read -e smartopt
+	if [ "$smartopt" = "y" ] ; then
+		echo "Smart option activated. Analyzing files..."
+		i="1"
+		while :
+		do
+			if [ $i -gt $totalfiles ] ; then
+				break
+			fi
+			oldfile=$(cd $currentdir && ls *.{mov,MOV,mp4,MP4} 2>/dev/null | head -n $i | tail -n 1)
+			echo -n -e "Analzying ${YELLOW}${oldfile}${NOCOLOR}..."
+			charcheck1=${oldfile:6:1}
+			charcheck2=${oldfile:9:1}
+			if [ "$charcheck1" = "_" ] && [ "$charcheck2" = "_" ] ; then
+				echo -e "${LIGHTCYAN}done${NOCOLOR} | File name accepted"
+				i=$((i+1))
+				continue
+			elif [ "$charcheck1" = "_" ] && [ "$charcheck2" = "." ] ; then
+				echo -e "${LIGHTCYAN}done${NOCOLOR} | File name needs additional information"
+				echo -e "Add name to ${YELLOW}${oldfile}${NOCOLOR} [s=skip|b=back|ls=list all files]: "
+				read -e newfile
+			else
+				echo -e "${LIGHTCYAN}done${NOCOLOR} | File needs to be renamed"
+				echo -e "Rename ${YELLOW}${oldfile}${NOCOLOR} (include file extension) [s=skip|b=back|ls=list all files]: "
+				read -e newfile
+			fi
+			if [ "$newfile" = "s" ] ; then
+				i=$((i+1))
+				continue
+			elif [ "$newfile" = "b" ] ; then
+				i=$((i-1))
+				continue
+			elif [ "$newfile" = "ls" ] ; then
+				cd $currentdir && ls *.{mov,MOV,mp4,MP4} 2>/dev/null
+				continue
+			else
+				if [ "$charcheck1" = "_" ] && [ "$charcheck2" = "." ] ; then
+					oldfile2=${oldfile::-4}
+					newfile=${oldfile2}_${newfile}.mov
+					sudo mv ${currentdir}/${oldfile} ${currentdir}/${newfile}
+				else
+					sudo mv ${currentdir}/${oldfile} ${currentdir}/${newfile}
+				fi
+			fi
+			i=$((i+1))
+		done
+		exit
+	fi
+	i="1"
+	while :
+	do
+		if [ $i -gt $totalfiles ] ; then
+			break
+		fi
+		oldfile=$(cd $currentdir && ls *.{mov,MOV,mp4,MP4} 2>/dev/null | head -n $i | tail -n 1)
+		echo -e "Rename ${YELLOW}${oldfile}${NOCOLOR} (include file extension) [s=skip|b=back|ls=list all files]: "
+		read -e newfile
+		if [ "$newfile" = "s" ] ; then
+			i=$((i+1))
+			continue
+		elif [ "$newfile" = "b" ] ; then
+			i=$((i-1))
+			continue
+		elif [ "$newfile" = "ls" ] ; then
+			cd $currentdir && ls *.{mov,MOV,mp4,MP4} 2>/dev/null
+			continue
+		else
+			sudo mv ${currentdir}/${oldfile} ${currentdir}/${newfile}
+		fi
+		i=$((i+1))
+	done
+	exit
+}
+# ============== SCRIPT OPTIONS ================================================================
+setvariables # function that sets default variables
+while [ "$1" != "" ] ;
+do
+	case $1 in
+		--import)
+			mountdrive
+			importvideos
+			exit ;;
+		-h|--help)
+			help
+			exit ;;
+		--rename)
+			renamefiles
+			exit ;;
+		*)
+			echo "Invalid option. See help (-h)."
+			exit ;;
+	esac
+	shift
+done
